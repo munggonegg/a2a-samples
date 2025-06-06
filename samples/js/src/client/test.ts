@@ -1,58 +1,96 @@
 import {
   A2AClient,
-//   TaskArtifactUpdateEvent,
-//   MessageSendParams, // Use params type directly
-} from "./client.js"; // Adjust path if necessary
-import { TaskStatusUpdateEvent, TaskArtifactUpdateEvent, MessageSendParams } from "../schema.js";
+} from "./client.js";
+import {
+  MessageSendParams,
+  TaskStatusUpdateEvent,
+  TaskArtifactUpdateEvent,
+  Message,
+  Task,
+} from "../schema.js";
 import { v4 as uuidv4 } from "uuid";
 
-const client = new A2AClient("http://localhost:41241");
+const client = new A2AClient("http://212.80.215.76:9999/");
 
-async function streamTask() {
-  const streamingTaskId = uuidv4();
+async function testStreaming() {
+  const taskId = uuidv4();
   try {
-    console.log(`\n--- Starting streaming task ${streamingTaskId} ---`);
-    // Construct just the params
-    const streamParams: MessageSendParams = {
-      id: streamingTaskId,
-      message: { role: "user", parts: [{ text: "Stream me some updates!", type: "text" }] },
-    };
-    // Pass only params to the client method
-    const stream = client.sendTaskSubscribe(streamParams);
+    console.log(`\n--- Starting streaming test with task ID ${taskId} ---`);
 
-    // Stream now yields the event payloads directly
+    // Create message parameters - adjusted to match your schema
+    const streamParams: MessageSendParams = {
+      message: {
+        messageId: uuidv4(),
+        kind: "message",
+        role: "user",
+        parts: [{
+          kind: "text",
+          text: "Stream me some updates!"
+        }]
+      },
+    };
+
+    // Use sendMessageStream to initiate the streaming
+    const stream = client.sendMessageStream(streamParams);
+
+    // Process the stream events
     for await (const event of stream) {
-      // Type guard to differentiate events based on structure
+      // Handle different event types
       if ("status" in event) {
-        // It's a TaskStatusUpdateEvent
-        const statusEvent = event as TaskStatusUpdateEvent; // Cast for clarity
+        // TaskStatusUpdateEvent
+        const statusEvent = event as TaskStatusUpdateEvent;
         console.log(
-          `[${streamingTaskId}] Status Update: ${statusEvent.status.state} - ${
-            statusEvent.status.message?.parts[0]?.text ?? "No message"
-          }`
+          `[${taskId}] Status Update: ${statusEvent.status.state}` +
+          (statusEvent.status.message
+            ? (() => {
+                const firstTextPart = statusEvent.status.message.parts.find(
+                  (part) => part.kind === "text" && "text" in part
+                );
+                return firstTextPart ? ` - ${(firstTextPart as { text: string }).text}` : '';
+              })()
+            : '')
         );
         if (statusEvent.final) {
-          console.log(`[${streamingTaskId}] Stream marked as final.`);
-          break; // Exit loop when server signals completion
+          console.log(`[${taskId}] Stream marked as final.`);
+          break;
         }
-      } else if ("artifact" in event) {
-        // It's a TaskArtifactUpdateEvent
-        const artifactEvent = event as TaskArtifactUpdateEvent; // Cast for clarity
+      }
+      else if ("artifact" in event) {
+        // TaskArtifactUpdateEvent
+        const artifactEvent = event as TaskArtifactUpdateEvent;
         console.log(
-          `[${streamingTaskId}] Artifact Update: ${
-            artifactEvent.artifact.name ??
-            `Index ${artifactEvent.artifact.index}`
+          `[${taskId}] Artifact Update: ${artifactEvent.artifact.name ?? "Unnamed Artifact"
           } - Part Count: ${artifactEvent.artifact.parts.length}`
         );
-        // Process artifact content (e.g., artifactEvent.artifact.parts[0].text)
-      } else {
-        console.warn("Received unknown event structure:", event);
+      }
+      else if ("role" in event) {
+        // Message
+        const message = event as Message;
+        const firstTextPart = message.parts.find(
+          (part) => part.kind === "text" && "text" in part
+        );
+        console.log(
+          `[${taskId}] New Message (${message.role}): ${firstTextPart ? (firstTextPart as { text: string }).text : "No text content"
+          }`
+        );
+      }
+      else if ("statusHistory" in event) {
+        // Task
+        const task = event as Task;
+        console.log(
+          `[${taskId}] Task Update: Current status is ${task.status.state}`
+        );
+      }
+      else {
+        console.warn(`[${taskId}] Received unknown event structure:`, event);
       }
     }
-    console.log(`--- Streaming task ${streamingTaskId} finished ---`);
+
+    console.log(`--- Streaming test ${taskId} completed ---`);
   } catch (error) {
-    console.error(`Error during streaming task ${streamingTaskId}:`, error);
+    console.error(`Error during streaming test ${taskId}:`, error);
   }
 }
 
-streamTask();
+// Run the test
+testStreaming();
