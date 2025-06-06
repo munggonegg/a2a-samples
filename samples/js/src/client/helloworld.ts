@@ -92,5 +92,5 @@ async function testStreaming() {
   }
 }
 
-// Run the test
+// Run the test: node --loader ts-node/esm helloworld.ts
 testStreaming();
